@@ -1,0 +1,47 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: # İstediğiniz an GitHub web sitesinden tek tıkla derleme başlatabilmenizi sağlar
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Kodu Klonla
+        uses: actions/checkout@v4
+
+      - name: Java Kurulumu
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Flutter Kurulumu
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Paketleri Getir
+        run: flutter pub get
+
+      - name: iOS Uygulamasını Derle (İmzasız)
+        run: flutter build ios --release --no-codesign
+
+      - name: Payload Klasörü Hazırla ve IPA Oluştur
+        run: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r app-release.ipa Payload
+        shell: bash
+
+      - name: IPA Dosyasını Çıktı Olarak Yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-ios-ipa
+          path: build/ios/iphoneos/app-release.ipa
+          retention-days: 3

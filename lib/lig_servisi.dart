@@ -229,7 +229,7 @@ class LigServisi {
         doc.id: Oyuncu.fromMap(doc.id, doc.data())
     };
 
-    // Tüm takımların ilk 11 şartını (1-4-4-2) kontrol et
+    // Tüm takımların ilk 11 şartını kontrol et
     final takimlarSnap = await _ligler.doc(ligId).collection('takimlar').get();
     for (final doc in takimlarSnap.docs) {
       final takimVeri = doc.data();
@@ -237,7 +237,7 @@ class LigServisi {
       final kadroIdleri = List<String>.from((takimVeri['kadro'] as List?) ?? []);
 
       final kadroOyuncular = kadroIdleri
-         .map((id) => oyuncuHaritasi[id])
+          .map((id) => oyuncuHaritasi[id])
           .whereType<Oyuncu>()
           .toList();
 
@@ -371,6 +371,39 @@ class LigServisi {
     await batch.commit();
   }
 
+  //// Yalnızca lig kurucusu ligi ve altındaki tüm koleksiyonları toplu (Batch) olarak siler.
+  static Future<void> ligiSil(String ligId) async {
+    final ligRef = _ligler.doc(ligId);
+    final ligDoc = await ligRef.get();
+    if (!ligDoc.exists) throw LigHatasi('Lig bulunamadı.');
+
+    if (ligDoc.data()?['kurucuId'] != _uid) {
+      throw LigHatasi('Yalnızca lig kurucusu ligi silebilir.');
+    }
+
+    // Koleksiyonları eşzamanlı (paralel) çek
+    final sonuclar = await Future.wait([
+      ligRef.collection('maclar').get(),
+      ligRef.collection('takimlar').get(),
+      ligRef.collection('oyuncular').get(),
+    ]);
+
+    // Tek bir batch paketi oluştur
+    final batch = _db.batch();
+
+    // Alt belgeleri pakete ekle
+    for (final snap in sonuclar) {
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+    }
+
+    // Ana lig belgesini de aynı pakete ekle
+    batch.delete(ligRef);
+
+    // Hepsini tek bir istekte Firebase'e gönder
+    await batch.commit();
+  }
   /// Ligdeki tüm maçları canlı dinler.
   static Stream<List<Mac>> maclar(String ligId) => _ligler
       .doc(ligId)

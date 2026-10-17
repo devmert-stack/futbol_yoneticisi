@@ -8,7 +8,16 @@ import 'lig_sayfalari.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  
+  try {
+    // options parametresini ekleyerek platform ayarlarını doğrudan bağlayın
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint("Firebase başlatma hatası: $e");
+  }
+
   runApp(const FutbolYoneticisiApp());
 }
 

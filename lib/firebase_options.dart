@@ -5,15 +5,6 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -23,10 +14,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
@@ -65,5 +53,14 @@ class DefaultFirebaseOptions {
     messagingSenderId: '162714850176',
     projectId: 'futbol-yoneticisi',
     storageBucket: 'futbol-yoneticisi.firebasestorage.app',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyDvWJA74TOVPi59_bf_XlgjIGOguBiwfTM',
+    appId: '1:162714850176:ios:f2b13bd44bec660e806765',
+    messagingSenderId: '162714850176',
+    projectId: 'futbol-yoneticisi',
+    storageBucket: 'futbol-yoneticisi.firebasestorage.app',
+    iosBundleId: 'com.example.futbolYoneticisi',
   );
 }

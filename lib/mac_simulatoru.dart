@@ -184,12 +184,14 @@ List<PuanSatiri> puanTablosuHesapla(
   Map<String, String> takimAdlari,
   Iterable<Mac> maclar,
 ) {
+  final oynanmisMaclar = maclar.where((m) => m.oynandi).toList();
+
   final tablo = {
     for (final e in takimAdlari.entries) e.key: PuanSatiri(e.key, e.value),
   };
 
-  for (final m in maclar) {
-    if (!m.oynandi) continue;
+  // İstatistikleri hesapla
+  for (final m in oynanmisMaclar) {
     final ev = tablo[m.evId];
     final dep = tablo[m.depId];
     if (ev == null || dep == null) continue;
@@ -215,14 +217,82 @@ List<PuanSatiri> puanTablosuHesapla(
     }
   }
 
-  return tablo.values.toList()
-    ..sort((a, b) {
-      var c = b.puan.compareTo(a.puan);
-      if (c != 0) return c;
-      c = b.averaj.compareTo(a.averaj);
-      if (c != 0) return c;
-      c = b.atilan.compareTo(a.atilan);
-      if (c != 0) return c;
-      return a.takimAdi.compareTo(b.takimAdi);
-    });
+  final liste = tablo.values.toList();
+
+  liste.sort((a, b) {
+    // 1. Kriter: Toplam Puan
+    final puanFarki = b.puan.compareTo(a.puan);
+    if (puanFarki != 0) return puanFarki;
+
+    // 2. Kriter: İkili Averaj (Sadece iki takımın puanı eşitse aralarındaki maçlara bakılır)
+    final ikiliKarsilastirma = _ikiliAverajKarsilastir(a.takimId, b.takimId, oynanmisMaclar);
+    if (ikiliKarsilastirma != 0) return ikiliKarsilastirma;
+
+    // 3. Kriter: Genel Averaj
+    final averajFarki = b.averaj.compareTo(a.averaj);
+    if (averajFarki != 0) return averajFarki;
+
+    // 4. Kriter: Atılan Gol
+    final atilanFarki = b.atilan.compareTo(a.atilan);
+    if (atilanFarki != 0) return atilanFarki;
+
+    // 5. Kriter: Takım Adı
+    return a.takimAdi.compareTo(b.takimAdi);
+  });
+
+  return liste;
+}
+
+/// İki takım arasındaki maçların puan ve averaj farkını hesaplar.
+/// Negatif dönerse 'a' üstte, pozitif dönerse 'b' üstte yer alır.
+int _ikiliAverajKarsilastir(String takimA, String takimB, List<Mac> maclar) {
+  final aralarindakiMaclar = maclar.where((m) =>
+      (m.evId == takimA && m.depId == takimB) ||
+      (m.evId == takimB && m.depId == takimA));
+
+  if (aralarindakiMaclar.isEmpty) return 0;
+
+  int aPuan = 0;
+  int bPuan = 0;
+  int aGol = 0;
+  int bGol = 0;
+
+  for (final m in aralarindakiMaclar) {
+    final evGol = m.evGol ?? 0;
+    final depGol = m.depGol ?? 0;
+
+    if (m.evId == takimA) {
+      aGol += evGol;
+      bGol += depGol;
+      if (evGol > depGol) {
+        aPuan += 3;
+      } else if (evGol < depGol) {
+        bPuan += 3;
+      } else {
+        aPuan += 1;
+        bPuan += 1;
+      }
+    } else {
+      bGol += evGol;
+      aGol += depGol;
+      if (evGol > depGol) {
+        bPuan += 3;
+      } else if (evGol < depGol) {
+        aPuan += 3;
+      } else {
+        aPuan += 1;
+        bPuan += 1;
+      }
+    }
+  }
+
+  // Önce aralarındaki puan üstünlüğü
+  if (bPuan != aPuan) {
+    return bPuan.compareTo(aPuan);
+  }
+
+  // Puanlar eşitse aralarındaki averaj (gol farkı)
+  final aAveraj = aGol - bGol;
+  final bAveraj = bGol - aGol;
+  return bAveraj.compareTo(aAveraj);
 }

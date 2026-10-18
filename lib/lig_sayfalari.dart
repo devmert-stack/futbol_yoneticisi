@@ -25,12 +25,20 @@ class AnaSayfa extends StatelessWidget {
         foregroundColor: Colors.black87,
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Center(
-              child: Text(
-                email,
-                style: const TextStyle(color: Colors.black54, fontSize: 13),
-              ),
+            padding: const EdgeInsets.only(right: 4.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  email,
+                  style: const TextStyle(color: Colors.black54, fontSize: 13),
+                ),
+                IconButton(
+                  tooltip: 'Çıkış Yap',
+                  icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                  onPressed: () => _cikisYapOnayi(context),
+                ),
+              ],
             ),
           ),
         ],
@@ -167,7 +175,38 @@ class AnaSayfa extends StatelessWidget {
       ),
     );
   }
-
+  void _cikisYapOnayi(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Çıkış Yap'),
+        content: const Text('Hesabınızdan çıkış yapmak istediğinize emin misiniz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Vazgeç'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red[800],
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await FirebaseAuth.instance.signOut();
+              // StreamBuilder (AuthStateChanges) kullanıyorsanız otomatik login ekranına döner,
+              // veya stack'i temizleyip login ekranına atmak isterseniz:
+              if (context.mounted) {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
+            },
+            child: const Text('Çıkış Yap'),
+          ),
+        ],
+      ),
+    );
+  }
   void _ligKurDialog(BuildContext context) {
     final ligAdCtrl = TextEditingController();
     final takimAdCtrl = TextEditingController();

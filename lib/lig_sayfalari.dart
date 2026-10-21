@@ -582,13 +582,57 @@ class _LobiSekmesi extends StatelessWidget {
 }
 
 /// ========================================================
-/// 2. OYUNCU PAZARI SEKMESİ
+/// 2. OYUNCU PAZARI SEKMESİ (Limitli, Sıralı ve Modern Tasarım)
 /// ========================================================
 class _OyuncuPazariSekmesi extends StatelessWidget {
   final String ligId;
   final Map<String, dynamic> ligData;
 
   const _OyuncuPazariSekmesi({required this.ligId, required this.ligData});
+
+  // Mevkilerin sıralama önceliği: KL -> DEF -> OS -> FOR
+  int _mevkiOncelik(String mevki) {
+    final m = mevki.toLowerCase().trim();
+    if (m.contains('kaleci') || m == 'kl') return 1;
+    if (m.contains('defans') || m == 'def') return 2;
+    if (m.contains('orta') || m == 'os') return 3;
+    if (m.contains('forvet') || m == 'for' || m == 'fwt') return 4;
+    return 5;
+  }
+
+  // Mevkiye göre renk paleti
+  Color _mevkiRenk(String mevki) {
+    final oncelik = _mevkiOncelik(mevki);
+    switch (oncelik) {
+      case 1:
+        return Colors.amber.shade700; // Kaleci
+      case 2:
+        return Colors.blue.shade700;  // Defans
+      case 3:
+        return Colors.green.shade700; // Orta Saha
+      case 4:
+        return Colors.red.shade700;   // Forvet
+      default:
+        return Colors.grey.shade700;
+    }
+  }
+
+  // Kısa mevki etiketi
+  String _kisaMevki(String mevki) {
+    final oncelik = _mevkiOncelik(mevki);
+    switch (oncelik) {
+      case 1:
+        return 'KL';
+      case 2:
+        return 'DEF';
+      case 3:
+        return 'OS';
+      case 4:
+        return 'FOR';
+      default:
+        return mevki.toUpperCase();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -599,73 +643,299 @@ class _OyuncuPazariSekmesi extends StatelessWidget {
       builder: (context, takimSnap) {
         final butce = (takimSnap.data?.data()?['butce'] as num?)?.toDouble() ?? 0.0;
 
-        return Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              color: Colors.white,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Kalan Bütçe: ${butce.toStringAsFixed(1)} M €',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  Text('Kod: ${ligData['davetKodu']}',
-                      style: const TextStyle(color: Colors.black54)),
-                ],
-              ),
-            ),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: LigServisi.oyuncular(ligId),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        // Kullanıcının mevcut kadrosundaki oyuncuları dinleyelim (Limit kontrolü için)
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: LigServisi.benimOyuncularim(ligId),
+          builder: (context, benimKadroSnap) {
+            final benimOyuncular = benimKadroSnap.data?.docs ?? [];
 
-                  final docs = snapshot.data!.docs;
-                  return ListView.builder(
-                    itemCount: docs.length,
-                    itemBuilder: (context, index) {
-                      final doc = docs[index];
-                      final d = doc.data();
-                      final takimId = d['takimId'];
-                      final fiyat = (d['fiyat'] as num?)?.toDouble() ?? 0.0;
+            // Mevki bazlı mevcut sayıları hesapla
+            int klSayisi = 0;
+            int defSayisi = 0;
+            int osSayisi = 0;
+            int forSayisi = 0;
 
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.grey.shade300,
-                          child: Text(d['mevki'] ?? 'OS', style: const TextStyle(fontSize: 12)),
-                        ),
-                        title: Text('${d['ad']} ${d['soyad']}'),
-                        subtitle: Text('${fiyat.toStringAsFixed(1)} M €'),
-                        trailing: takimId == null
-                            ? ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                onPressed: () async {
-                                  try {
-                                    await LigServisi.oyuncuAl(ligId: ligId, oyuncuId: doc.id);
-                                  } catch (e) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text(e.toString())),
-                                    );
-                                  }
-                                },
-                                child: const Text('Al'),
-                              )
-                            : Text(
-                                takimId == uid ? 'Takımında' : 'Satıldı',
-                                style: TextStyle(
-                                  color: takimId == uid ? Colors.green : Colors.grey,
-                                  fontWeight: FontWeight.bold,
-                                ),
+            for (final doc in benimOyuncular) {
+              final m = (doc.data()['mevki'] ?? '').toString();
+              final oncelik = _mevkiOncelik(m);
+              if (oncelik == 1) klSayisi++;
+              if (oncelik == 2) defSayisi++;
+              if (oncelik == 3) osSayisi++;
+              if (oncelik == 4) forSayisi++;
+            }
+
+            // Mevki doluluk kuralları (Maksimumlar)
+            final bool klDolu = klSayisi >= 3;
+            final bool defDolu = defSayisi >= 5;
+            final bool osDolu = osSayisi >= 5;
+            final bool forDolu = forSayisi >= 3;
+
+            return Column(
+              children: [
+                // 1. ÜST BİLGİ VE BÜTÇE KARTI
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  color: Colors.white,
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.account_balance_wallet, color: Colors.green, size: 20),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${butce.toStringAsFixed(1)} M €',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
                               ),
+                            ],
+                          ),
+                          Text(
+                            'Kod: ${ligData['davetKodu']}',
+                            style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // MEVKİ KONTENJAN ROZETLERİ (1/3, 2/5 gibi)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _kontenjanRozeti('KL', klSayisi, 3, Colors.amber.shade700),
+                          _kontenjanRozeti('DEF', defSayisi, 5, Colors.blue.shade700),
+                          _kontenjanRozeti('OS', osSayisi, 5, Colors.green.shade700),
+                          _kontenjanRozeti('FOR', forSayisi, 3, Colors.red.shade700),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, thickness: 1),
+
+                // 2. PAZARDAKİ OYUNCULAR LİSTESİ
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: LigServisi.oyuncular(ligId),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      // Sadece henüz bir takıma ait olmayan (satılmamış) oyuncuları al
+                      var tumOyuncular = snapshot.data!.docs.where((doc) {
+                        final tId = doc.data()['takimId'];
+                        return tId == null;
+                      }).toList();
+
+                      // Mevkisi dolanları bu kullanıcının pazarından gizle
+                      tumOyuncular = tumOyuncular.where((doc) {
+                        final m = (doc.data()['mevki'] ?? '').toString();
+                        final oncelik = _mevkiOncelik(m);
+                        if (oncelik == 1 && klDolu) return false;
+                        if (oncelik == 2 && defDolu) return false;
+                        if (oncelik == 3 && osDolu) return false;
+                        if (oncelik == 4 && forDolu) return false;
+                        return true;
+                      }).toList();
+
+                      // SIRALAMA: Önce Mevki (KL -> DEF -> OS -> FOR), sonra Fiyat (Yüksekten düşüğe)
+                      tumOyuncular.sort((a, b) {
+                        final ma = _mevkiOncelik((a.data()['mevki'] ?? '').toString());
+                        final mb = _mevkiOncelik((b.data()['mevki'] ?? '').toString());
+                        if (ma != mb) return ma.compareTo(mb);
+
+                        final fa = (a.data()['fiyat'] as num?)?.toDouble() ?? 0.0;
+                        final fb = (b.data()['fiyat'] as num?)?.toDouble() ?? 0.0;
+                        return fb.compareTo(fa);
+                      });
+
+                      if (tumOyuncular.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Text(
+                              (klDolu && defDolu && osDolu && forDolu)
+                                  ? 'Tüm mevkileriniz tamamlandı (Kadro 16/16 dolu)!'
+                                  : 'Bu kriterlerde uygun oyuncu kalmadı.',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
+                            ),
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        itemCount: tumOyuncular.length,
+                        itemBuilder: (context, index) {
+                          final doc = tumOyuncular[index];
+                          final d = doc.data();
+                          final mevkiRaw = (d['mevki'] ?? 'OS').toString();
+                          final mevkiLabel = _kisaMevki(mevkiRaw);
+                          final mevkiColor = _mevkiRenk(mevkiRaw);
+                          final fiyat = (d['fiyat'] as num?)?.toDouble() ?? 0.0;
+                          final guc = d['guc'] ?? 70;
+                          final adSoyad = '${d['ad']} ${d['soyad']}';
+                          final parasiYetiyor = butce >= fiyat;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey.shade200),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.02),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              child: Row(
+                                children: [
+                                  // MEVKİ ROZETİ
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: mevkiColor.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        mevkiLabel,
+                                        style: TextStyle(
+                                          color: mevkiColor,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // OYUNCU ADI VE GÜCÜ
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          adSoyad,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.shade100,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'GÜÇ $guc',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.grey.shade800,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              '${fiyat.toStringAsFixed(1)} M €',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.green.shade800,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // SATIN AL BUTONU
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: parasiYetiyor ? const Color(0xFF2E6930) : Colors.grey.shade400,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    onPressed: parasiYetiyor
+                                        ? () async {
+                                            try {
+                                              await LigServisi.oyuncuAl(ligId: ligId, oyuncuId: doc.id);
+                                            } catch (e) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(content: Text(e.toString())),
+                                              );
+                                            }
+                                          }
+                                        : null,
+                                    child: const Text(
+                                      'Al',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       );
                     },
-                  );
-                },
-              ),
-            ),
-          ],
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
+    );
+  }
+
+  // Kontenjan gösterge etiketi
+  Widget _kontenjanRozeti(String mevki, int aktif, int max, Color renk) {
+    final bool doldu = aktif >= max;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: doldu ? Colors.grey.shade200 : renk.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: doldu ? Colors.grey.shade400 : renk.withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$mevki: ',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: doldu ? Colors.black54 : renk,
+            ),
+          ),
+          Text(
+            '$aktif/$max',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: doldu ? Colors.red.shade700 : Colors.black87,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
